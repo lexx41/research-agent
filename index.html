@@ -80,7 +80,7 @@ const GROQ_API_KEY = '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';
 // Модель: llama-3.3-70b — бесплатная и мощная
 const MODEL = 'llama-3.3-70b-versatile';
 // API endpoint Groq
-const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const API_URL = 'https://cors-anywhere.herokuapp.com/https://api.groq.com/openai/v1/chat/completions';
 // =============================================
 
 let mode = 'research';
@@ -202,6 +202,7 @@ async function sendMessage() {
     const resp = await fetch(API_URL, {
       method: 'POST',
       headers: {
+        'X-Requested-With': 'XMLHttpRequest',
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + GROQ_API_KEY
       },
