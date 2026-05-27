@@ -39,7 +39,7 @@
   #input-area { padding: 12px 16px; border-top: 1px solid #e0e0e0; display: flex; gap: 8px; align-items: flex-end; background: #f9f9f9; }
   #user-input { flex: 1; resize: none; border: 1px solid #ddd; border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: system-ui, sans-serif; line-height: 1.5; min-height: 36px; max-height: 100px; background: white; color: #111; }
   #user-input:focus { outline: none; border-color: #1D9E75; }
-  #send-btn { width: 36px; height: 36px; border-radius: 8px; border: none; background: #1D9E75; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; transition: opacity 0.15s; }
+  #send-btn { width: 36px; height: 36px; border-radius: 8px; border: none; background: #1D9E75; color: white; cursor: pointer; font-size: 16px; transition: opacity 0.15s; }
   #send-btn:hover { opacity: 0.85; }
   #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
@@ -75,12 +75,9 @@
 
 <script>
 // =============================================
-// КОНФИГУРАЦИЯ — ЗАМЕНИ СВОЙ КЛЮЧ ЗДЕСЬ
-const GROQ_API_KEY = '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';
-// Модель: llama-3.3-70b — бесплатная и мощная
-const MODEL = 'llama-3.3-70b-versatile';
-// API endpoint Groq
-const API_URL = 'https://cors-anywhere.herokuapp.com/https://api.groq.com/openai/v1/chat/completions';
+// ФРОНТЕНД — выполняется в браузере
+// Ключ Groq здесь НЕ хранится.
+// Все запросы идут на /api/chat — наш бэкенд.
 // =============================================
 
 let mode = 'research';
@@ -88,7 +85,8 @@ let history = [];
 let busy = false;
 
 // Системный промпт для режима Исследование
-// Описывает алгоритм работы агента: план → поиск × 3 → отчёт
+// Реализует паттерн Plan-and-Execute:
+// план → поисковые запросы → итоговый отчёт
 const SYSTEM_RESEARCH = `Ты — AI-агент-исследователь. Когда получаешь тему для исследования, ты ОБЯЗАН действовать строго по следующему алгоритму:
 
 1. ПЛАН: Напиши раздел "📋 ПЛАН ИССЛЕДОВАНИЯ:" — перечисли 3-4 конкретных аспекта, которые исследуешь.
@@ -101,7 +99,7 @@ const SYSTEM_RESEARCH = `Ты — AI-агент-исследователь. Ко
 
 5. ОТЧЁТ: Напиши "📊 ИТОГОВЫЙ ОТЧЁТ:" и дай структурированный вывод с ключевыми находками, сравнениями и рекомендациями.
 
-Отвечай на русском языке. Будь конкретным, используй реальные данные и примеры. Все 5 блоков обязательны.`;
+Отвечай на русском языке. Будь конкретным. Все 5 блоков обязательны.`;
 
 // Системный промпт для режима Чат
 // Guardrails — список запрещённых тем
@@ -111,7 +109,7 @@ const SYSTEM_CHAT = `Ты — дружелюбный AI-ассистент. Св
 - Медицинские диагнозы и юридические советы
 - Генерация дезинформации
 
-По всем остальным темам — технологии, наука, образование, культура, программирование, AI — отвечай развёрнуто и полезно. Отвечай на русском языке.`;
+По всем остальным темам — технологии, наука, образование, AI, программирование — отвечай развёрнуто. Отвечай на русском языке.`;
 
 function setMode(m) {
   mode = m;
@@ -197,25 +195,18 @@ async function sendMessage() {
   history.push({ role: 'user', content: text });
   showThinking();
 
-  // Вызов Groq API (совместим с OpenAI-форматом)
   try {
-    const resp = await fetch(API_URL, {
+    // Запрос идёт НЕ к Groq напрямую, а к нашему бэкенду /api/chat
+    // Бэкенд сам добавит ключ и отправит запрос к Groq
+    const resp = await fetch('/api/chat', {
       method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + GROQ_API_KEY
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 2000,
-        // Системный промпт меняется в зависимости от режима
-        messages: [
-          { role: 'system', content: mode === 'research' ? SYSTEM_RESEARCH : SYSTEM_CHAT },
-          ...history
-        ]
+        messages: history,
+        systemPrompt: mode === 'research' ? SYSTEM_RESEARCH : SYSTEM_CHAT
       })
     });
+
     const data = await resp.json();
     const reply = data.choices?.[0]?.message?.content || 'Ошибка ответа';
     history.push({ role: 'assistant', content: reply });
@@ -227,7 +218,7 @@ async function sendMessage() {
     }
   } catch(e) {
     hideThinking();
-    addMsg('agent', 'Ошибка подключения. Проверьте API-ключ в коде.', 'chat');
+    addMsg('agent', 'Ошибка подключения к серверу.', 'chat');
   }
 
   busy = false;
@@ -242,7 +233,6 @@ document.getElementById('user-input').addEventListener('input', function() {
   this.style.height = Math.min(this.scrollHeight, 100) + 'px';
 });
 
-// Приветственное сообщение при загрузке
 addMsg('agent', 'Привет! Я Research Agent.\n\nВ режиме «Исследование» введи любую тему — я составлю план, сделаю несколько поисковых запросов и выдам структурированный отчёт.\n\nВ режиме «Чат» просто спрашивай о технологиях, AI, программировании и других темах.\n\nПопробуй быстрые кнопки или напиши свой запрос!', 'chat');
 </script>
 </body>
