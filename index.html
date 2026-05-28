@@ -195,17 +195,34 @@ async function sendMessage() {
   history.push({ role: 'user', content: text });
   showThinking();
 
-  try {
-    // Запрос идёт НЕ к Groq напрямую, а к нашему бэкенду /api/chat
-    // Бэкенд сам добавит ключ и отправит запрос к Groq
-    const resp = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: history,
-        systemPrompt: mode === 'research' ? SYSTEM_RESEARCH : SYSTEM_CHAT
-      })
-    });
+ try {
+  showThinking();
+
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: history, systemPrompt: currentSystemPrompt })
+  });
+
+  const data = await res.json();
+  hideThinking();
+
+  // 🔴 Обработка ошибок от бэкенда
+  if (!res.ok) {
+    const errorMsg = data.error || `Ошибка сервера (${res.status})`;
+    addMessage('assistant', `⚠️ ${errorMsg}`);
+    return; // Прерываем, чтобы не парсить пустой ответ
+  }
+
+  // ✅ Успешный ответ
+  const aiText = data.choices?.[0]?.message?.content || 'Получен пустой ответ';
+  addMessage('assistant', aiText);
+  history.push({ role: 'assistant', content: aiText });
+
+} catch (err) {
+  hideThinking();
+  addMessage('assistant', '🌐 Нет соединения с сервером. Проверь интернет.');
+}
 
     const data = await resp.json();
     const reply = data.choices?.[0]?.message?.content || 'Ошибка ответа';
